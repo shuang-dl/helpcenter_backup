@@ -3,6 +3,8 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var viewModel = BackupViewModel()
+    @State private var isExportSettingsExpanded = true
+    @State private var isAPIOutputExpanded = true
 
     @AppStorage("helpCenterBackup.token") private var accessToken = ""
     @AppStorage("helpCenterBackup.outputPath") private var outputPath = ""
@@ -81,17 +83,78 @@ struct ContentView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             VStack(spacing: 8) {
-                SidebarOptionRow(title: "Run Backup", systemImage: "play.fill", isActive: true)
-                SidebarOptionRow(title: "Export Settings", systemImage: "slider.horizontal.3", isActive: false)
-                SidebarOptionRow(title: "API & Output", systemImage: "link.badge.plus", isActive: false)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isExportSettingsExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        SidebarOptionRow(title: "Export Settings", systemImage: "slider.horizontal.3", isActive: isExportSettingsExpanded)
+                        Image(systemName: isExportSettingsExpanded ? "chevron.up" : "chevron.down")
+                            .foregroundStyle(.white.opacity(0.72))
+                            .padding(.trailing, 10)
+                    }
+                    .background(Color.clear)
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+
+                if isExportSettingsExpanded {
+                    exportSettingsPanel
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isAPIOutputExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        SidebarOptionRow(title: "API & Output", systemImage: "link.badge.plus", isActive: isAPIOutputExpanded)
+                        Image(systemName: isAPIOutputExpanded ? "chevron.up" : "chevron.down")
+                            .foregroundStyle(.white.opacity(0.72))
+                            .padding(.trailing, 10)
+                    }
+                    .background(Color.clear)
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+
+                if isAPIOutputExpanded {
+                    apiOutputPanel
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
                 SidebarOptionRow(title: "Logs", systemImage: "terminal", isActive: false)
+
+                Button {
+                    startBackup()
+                } label: {
+                    SidebarOptionRow(
+                        title: viewModel.isRunning ? "Running Backup..." : "Run Backup",
+                        systemImage: "play.fill",
+                        isActive: true,
+                        statusDotColor: canStartBackup ? .green : .red
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(viewModel.isRunning || !canStartBackup)
+                .pointingHandCursor(enabled: !viewModel.isRunning && canStartBackup)
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Intercom API Key")
-                    .foregroundStyle(.white.opacity(0.85))
-                    .font(.system(size: 12, weight: .medium))
-                SecureField("Enter token", text: $accessToken)
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .foregroundStyle(.white)
+    }
+
+    private var exportSettingsPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Output Folder")
+                .foregroundStyle(.white.opacity(0.85))
+                .font(.system(size: 12, weight: .medium))
+            HStack(spacing: 8) {
+                TextField("Choose output directory", text: $outputPath)
                     .textFieldStyle(.plain)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
@@ -101,80 +164,73 @@ struct ContentView: View {
                             .stroke(Color.white.opacity(0.18), lineWidth: 1)
                     )
 
-                Text("Output Folder")
-                    .foregroundStyle(.white.opacity(0.85))
-                    .font(.system(size: 12, weight: .medium))
-                HStack(spacing: 8) {
-                    TextField("Choose output directory", text: $outputPath)
-                        .textFieldStyle(.plain)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(Color.black.opacity(0.25))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                        )
-
-                    Button("Browse") {
-                        if let selected = chooseDirectory() {
-                            outputPath = selected.path
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-
-                Text("File Type")
-                    .foregroundStyle(.white.opacity(0.85))
-                    .font(.system(size: 12, weight: .medium))
-                Picker("", selection: exportFormatBinding) {
-                    ForEach(ExportFormat.allCases) { format in
-                        Text(format.displayName).tag(format)
+                Button("Browse") {
+                    if let selected = chooseDirectory() {
+                        outputPath = selected.path
                     }
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.borderedProminent)
+                .pointingHandCursor()
+            }
 
-                Toggle("Include Images", isOn: $includeImages)
-                    .toggleStyle(.checkbox)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Full Download", isOn: fullDownloadBinding)
-                        .toggleStyle(.checkbox)
-                    Toggle("Updates Only", isOn: updatesOnlyBinding)
-                        .toggleStyle(.checkbox)
-                }
-
-                HStack(spacing: 10) {
-                    Button(viewModel.isRunning ? "Running..." : "Start Backup") {
-                        viewModel.startBackup(
-                            token: accessToken,
-                            outputDirectoryPath: outputPath,
-                            exportFormat: ExportFormat(rawValue: exportFormatRaw) ?? .markdown,
-                            includeImages: includeImages,
-                            downloadMode: DownloadMode(rawValue: downloadModeRaw) ?? .updatesOnly
-                        )
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(viewModel.isRunning)
-
-                    Text(viewModel.statusLine)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.85))
+            Text("File Type")
+                .foregroundStyle(.white.opacity(0.85))
+                .font(.system(size: 12, weight: .medium))
+            Picker("", selection: exportFormatBinding) {
+                ForEach(ExportFormat.allCases) { format in
+                    Text(format.displayName).tag(format)
                 }
             }
-            .padding(12)
-            .background(Color.white.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
-            )
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .pointingHandCursor()
 
-            Spacer(minLength: 0)
+            Toggle("Include Images", isOn: $includeImages)
+                .toggleStyle(.checkbox)
+                .pointingHandCursor()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("Full Download", isOn: fullDownloadBinding)
+                    .toggleStyle(.checkbox)
+                    .pointingHandCursor()
+                Toggle("Updates Only", isOn: updatesOnlyBinding)
+                    .toggleStyle(.checkbox)
+                    .pointingHandCursor()
+            }
         }
-        .padding(14)
-        .foregroundStyle(.white)
+        .padding(12)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    private var apiOutputPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Intercom API Key")
+                .foregroundStyle(.white.opacity(0.85))
+                .font(.system(size: 12, weight: .medium))
+
+            SecureField("Enter token", text: $accessToken)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(Color.black.opacity(0.25))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                )
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
     }
 
     private var terminalPanel: some View {
@@ -284,6 +340,22 @@ struct ContentView: View {
         )
     }
 
+    private var canStartBackup: Bool {
+        !accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !outputPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func startBackup() {
+        guard canStartBackup else { return }
+        viewModel.startBackup(
+            token: accessToken,
+            outputDirectoryPath: outputPath,
+            exportFormat: ExportFormat(rawValue: exportFormatRaw) ?? .markdown,
+            includeImages: includeImages,
+            downloadMode: DownloadMode(rawValue: downloadModeRaw) ?? .updatesOnly
+        )
+    }
+
     private func terminalStatCard(title: String, value: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title.uppercased())
@@ -346,6 +418,7 @@ private struct SidebarOptionRow: View {
     let title: String
     let systemImage: String
     let isActive: Bool
+    var statusDotColor: Color? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -353,7 +426,11 @@ private struct SidebarOptionRow: View {
                 .frame(width: 18)
             Text(title)
             Spacer()
-            if isActive {
+            if let statusDotColor {
+                Circle()
+                    .fill(statusDotColor)
+                    .frame(width: 8, height: 8)
+            } else if isActive {
                 Circle()
                     .fill(.cyan)
                     .frame(width: 8, height: 8)
@@ -368,5 +445,21 @@ private struct SidebarOptionRow: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(isActive ? Color.cyan.opacity(0.55) : Color.white.opacity(0.08), lineWidth: 1)
         )
+    }
+}
+
+private extension View {
+    func pointingHandCursor(enabled: Bool = true) -> some View {
+        onHover { isHovering in
+            guard enabled else {
+                NSCursor.arrow.set()
+                return
+            }
+            if isHovering {
+                NSCursor.pointingHand.set()
+            } else {
+                NSCursor.arrow.set()
+            }
+        }
     }
 }
