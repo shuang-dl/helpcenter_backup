@@ -11,125 +11,314 @@ struct ContentView: View {
     @AppStorage("helpCenterBackup.downloadMode") private var downloadModeRaw = DownloadMode.updatesOnly.rawValue
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
-                    if let icon = appIconImage {
-                        Image(nsImage: icon)
-                            .resizable()
-                            .interpolation(.high)
-                            .frame(width: 56, height: 56)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.08, green: 0.18, blue: 0.36),
+                    Color(red: 0.06, green: 0.13, blue: 0.28),
+                    Color(red: 0.04, green: 0.09, blue: 0.22)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
 
+            RadialGradient(
+                colors: [Color.white.opacity(0.14), Color.clear],
+                center: .top,
+                startRadius: 20,
+                endRadius: 700
+            )
+            .ignoresSafeArea()
+
+            HStack(spacing: 0) {
+                sidebar
+                    .frame(width: 330)
+
+                Divider().overlay(Color.white.opacity(0.2))
+
+                terminalPanel
+            }
+            .background(Color.white.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
+            )
+            .padding(16)
+        }
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                if let icon = appIconImage {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 42, height: 42)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("HelpCenter Backup")
+                        .font(.title3.weight(.semibold))
                     Text(appVersionText)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.75))
                 }
-                .frame(width: 64, alignment: .leading)
+            }
+
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.white.opacity(0.75))
+                Text("Options")
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.white.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(spacing: 8) {
+                SidebarOptionRow(title: "Run Backup", systemImage: "play.fill", isActive: true)
+                SidebarOptionRow(title: "Export Settings", systemImage: "slider.horizontal.3", isActive: false)
+                SidebarOptionRow(title: "API & Output", systemImage: "link.badge.plus", isActive: false)
+                SidebarOptionRow(title: "Logs", systemImage: "terminal", isActive: false)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Intercom API Key")
+                    .foregroundStyle(.white.opacity(0.85))
+                    .font(.system(size: 12, weight: .medium))
+                SecureField("Enter token", text: $accessToken)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.25))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                    )
+
+                Text("Output Folder")
+                    .foregroundStyle(.white.opacity(0.85))
+                    .font(.system(size: 12, weight: .medium))
+                HStack(spacing: 8) {
+                    TextField("Choose output directory", text: $outputPath)
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.25))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                        )
+
+                    Button("Browse") {
+                        if let selected = chooseDirectory() {
+                            outputPath = selected.path
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                Text("File Type")
+                    .foregroundStyle(.white.opacity(0.85))
+                    .font(.system(size: 12, weight: .medium))
+                Picker("", selection: exportFormatBinding) {
+                    ForEach(ExportFormat.allCases) { format in
+                        Text(format.displayName).tag(format)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Toggle("Include Images", isOn: $includeImages)
+                    .toggleStyle(.checkbox)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Help Center Backup")
-                        .font(.title2)
-                        .bold()
+                    Toggle("Full Download", isOn: fullDownloadBinding)
+                        .toggleStyle(.checkbox)
+                    Toggle("Updates Only", isOn: updatesOnlyBinding)
+                        .toggleStyle(.checkbox)
+                }
 
-                    Text("Download an incremental backup of your Intercom help center articles.")
-                        .foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    Button(viewModel.isRunning ? "Running..." : "Start Backup") {
+                        viewModel.startBackup(
+                            token: accessToken,
+                            outputDirectoryPath: outputPath,
+                            exportFormat: ExportFormat(rawValue: exportFormatRaw) ?? .markdown,
+                            includeImages: includeImages,
+                            downloadMode: DownloadMode(rawValue: downloadModeRaw) ?? .updatesOnly
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(viewModel.isRunning)
+
+                    Text(viewModel.statusLine)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.85))
                 }
             }
+            .padding(12)
+            .background(Color.white.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
+            )
 
-            GroupBox {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Intercom Access Token")
-                    SecureField("Enter Intercom API key", text: $accessToken)
-                        .textFieldStyle(.roundedBorder)
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .foregroundStyle(.white)
+    }
 
-                    Text("Output Folder")
-                    HStack {
-                        TextField("Choose output directory", text: $outputPath)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Browse...") {
-                            if let selected = chooseDirectory() {
-                                outputPath = selected.path
-                            }
-                        }
-                    }
+    private var terminalPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Circle().fill(Color.red.opacity(0.9)).frame(width: 12, height: 12)
+                Circle().fill(Color.yellow.opacity(0.9)).frame(width: 12, height: 12)
+                Circle().fill(Color.green.opacity(0.9)).frame(width: 12, height: 12)
 
-                    Text("File Type")
-                    Picker("", selection: Binding(
-                        get: { ExportFormat(rawValue: exportFormatRaw) ?? .markdown },
-                        set: { exportFormatRaw = $0.rawValue }
-                    )) {
-                        ForEach(ExportFormat.allCases) { format in
-                            Text(format.displayName).tag(format)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(width: 180, alignment: .leading)
-
-                    Toggle("Include Images", isOn: $includeImages)
-                        .toggleStyle(.checkbox)
-
-                    HStack(spacing: 18) {
-                        Toggle("Full Download", isOn: Binding(
-                            get: { (DownloadMode(rawValue: downloadModeRaw) ?? .updatesOnly) == .fullDownload },
-                            set: { isOn in
-                                downloadModeRaw = isOn ? DownloadMode.fullDownload.rawValue : DownloadMode.updatesOnly.rawValue
-                            }
-                        ))
-                        .toggleStyle(.checkbox)
-
-                        Toggle("Updates Only", isOn: Binding(
-                            get: { (DownloadMode(rawValue: downloadModeRaw) ?? .updatesOnly) == .updatesOnly },
-                            set: { isOn in
-                                downloadModeRaw = isOn ? DownloadMode.updatesOnly.rawValue : DownloadMode.fullDownload.rawValue
-                            }
-                        ))
-                        .toggleStyle(.checkbox)
-                    }
-                }
-                .padding(.top, 4)
+                Text("samuel@helpcenter-backup:~$ run backup")
+                    .font(.system(size: 15, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .padding(.leading, 8)
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.white.opacity(0.09))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-            HStack {
-                Button(viewModel.isRunning ? "Running..." : "Start Backup") {
-                    viewModel.startBackup(
-                        token: accessToken,
-                        outputDirectoryPath: outputPath,
-                        exportFormat: ExportFormat(rawValue: exportFormatRaw) ?? .markdown,
-                        includeImages: includeImages,
-                        downloadMode: DownloadMode(rawValue: downloadModeRaw) ?? .updatesOnly
-                    )
-                }
-                .disabled(viewModel.isRunning)
-
-                Text(viewModel.statusLine)
-                    .foregroundStyle(.secondary)
-            }
-
-            if let stats = viewModel.lastStats {
-                Text("Total: \(stats.total)   New: \(stats.created)   Modified: \(stats.modified)   Unchanged: \(stats.unchanged)")
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-            }
-
-            GroupBox("Run Log") {
-                ScrollViewReader { _ in
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 0) {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 6) {
                             ForEach(Array(viewModel.logs.enumerated()), id: \.offset) { _, line in
                                 Text(line)
-                                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                                    .font(.system(size: 15, weight: .regular, design: .monospaced))
+                                    .foregroundStyle(logColor(for: line))
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+
+                            if viewModel.logs.isEmpty {
+                                Text("[Ready] Waiting to start backup...")
+                                    .font(.system(size: 15, weight: .regular, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.65))
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
-                        .padding(8)
+                        .padding(14)
                     }
-                    .background(Color(NSColor.textBackgroundColor))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.28))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    )
+
+                    HStack(spacing: 8) {
+                        Text("$")
+                            .font(.system(size: 16, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.cyan.opacity(0.9))
+                        Text(viewModel.isRunning ? "backup running..." : "idle")
+                            .font(.system(size: 14, weight: .regular, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.8))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.09))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    terminalStatCard(
+                        title: "Current",
+                        value: viewModel.statusLine,
+                        subtitle: viewModel.isRunning ? "Backup in progress" : "Ready to run"
+                    )
+
+                    if let stats = viewModel.lastStats {
+                        terminalStatCard(
+                            title: "Results",
+                            value: "New \(stats.created) • Updated \(stats.modified)",
+                            subtitle: "Unchanged \(stats.unchanged) of \(stats.total)"
+                        )
+                    }
+                }
+                .frame(width: 250)
             }
         }
-        .padding(18)
+        .padding(14)
+    }
+
+    private var exportFormatBinding: Binding<ExportFormat> {
+        Binding(
+            get: { ExportFormat(rawValue: exportFormatRaw) ?? .markdown },
+            set: { exportFormatRaw = $0.rawValue }
+        )
+    }
+
+    private var fullDownloadBinding: Binding<Bool> {
+        Binding(
+            get: { (DownloadMode(rawValue: downloadModeRaw) ?? .updatesOnly) == .fullDownload },
+            set: { isOn in
+                downloadModeRaw = isOn ? DownloadMode.fullDownload.rawValue : DownloadMode.updatesOnly.rawValue
+            }
+        )
+    }
+
+    private var updatesOnlyBinding: Binding<Bool> {
+        Binding(
+            get: { (DownloadMode(rawValue: downloadModeRaw) ?? .updatesOnly) == .updatesOnly },
+            set: { isOn in
+                downloadModeRaw = isOn ? DownloadMode.updatesOnly.rawValue : DownloadMode.fullDownload.rawValue
+            }
+        )
+    }
+
+    private func terminalStatCard(title: String, value: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.75))
+
+            Text(value)
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+
+            Text(subtitle)
+                .font(.system(size: 13, weight: .regular, design: .rounded))
+                .foregroundStyle(.white.opacity(0.75))
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+        )
+    }
+
+    private func logColor(for line: String) -> Color {
+        if line.localizedCaseInsensitiveContains("error") || line.localizedCaseInsensitiveContains("failed") {
+            return Color.red.opacity(0.95)
+        }
+        if line.localizedCaseInsensitiveContains("saved") || line.localizedCaseInsensitiveContains("finished") {
+            return Color.green.opacity(0.95)
+        }
+        if line.localizedCaseInsensitiveContains("fetching") || line.localizedCaseInsensitiveContains("processing") {
+            return Color.cyan.opacity(0.95)
+        }
+        return Color.white.opacity(0.88)
     }
 
     private var appIconImage: NSImage? {
@@ -150,5 +339,34 @@ struct ContentView: View {
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = true
         return panel.runModal() == .OK ? panel.url : nil
+    }
+}
+
+private struct SidebarOptionRow: View {
+    let title: String
+    let systemImage: String
+    let isActive: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .frame(width: 18)
+            Text(title)
+            Spacer()
+            if isActive {
+                Circle()
+                    .fill(.cyan)
+                    .frame(width: 8, height: 8)
+            }
+        }
+        .foregroundStyle(.white.opacity(isActive ? 0.95 : 0.75))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(isActive ? Color.cyan.opacity(0.20) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(isActive ? Color.cyan.opacity(0.55) : Color.white.opacity(0.08), lineWidth: 1)
+        )
     }
 }
