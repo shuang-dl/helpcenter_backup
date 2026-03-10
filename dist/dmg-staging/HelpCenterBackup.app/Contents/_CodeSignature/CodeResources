@@ -8,6 +8,10 @@
 		<data>
 		/T8PHVgfPmtAuKjsSvTg9QnntXE=
 		</data>
+		<key>Resources/HelpCenterBackupMacApp_HelpCenterBackupApp.bundle/README.md</key>
+		<data>
+		8av7qP36jVsBjJJkBzTpx7exsgs=
+		</data>
 	</dict>
 	<key>files2</key>
 	<dict>
@@ -16,6 +20,13 @@
 			<key>hash2</key>
 			<data>
 			Pe8G6ZuIvEyA2DbxxwkoZRHG6h7NhANTwAHqI3RbvL0=
+			</data>
+		</dict>
+		<key>Resources/HelpCenterBackupMacApp_HelpCenterBackupApp.bundle/README.md</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			e9mjS8pSdjSehwW+9QWnz/X7IdNySfIM2bvVgkl913Q=
 			</data>
 		</dict>
 	</dict>
