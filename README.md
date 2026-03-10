@@ -1,50 +1,58 @@
-# HelpCenterBackupMacApp
+# HelpCenterBackup
 
-A native macOS SwiftUI app that downloads an incremental backup of Intercom Help Center articles.
+`HelpCenterBackup` is a native macOS app for downloading and maintaining backups of Intercom Help Center articles.
 
-## What it does
+## Features
 
-- Fetches help centers, collections, and articles from Intercom.
-- Saves articles as `json`, `md`, `html`, or `pdf` files in a folder hierarchy:
-  - Help Center -> Collection(s) -> Section/Subsection(s) -> Article file
-- Tracks article `updated_at` in `.backup_metadata.json`.
-- On later runs, only rewrites new/updated articles (incremental backup).
+- Backs up articles in nested folders:
+- `Help Center -> Collection -> Sub-Collection/Section -> Article`
+- Export formats:
+- `JSON`, `MARKDOWN (.md)`, `HTML`, `PDF`, `TXT`
+- Image handling:
+- Optional image download with local asset references
+- Download modes:
+- `Full Download` and `Updates Only` (incremental)
+- Incremental metadata file:
+- `.backup_metadata.json`
+- Backup history log with timestamps:
+- `.backup_history.log`
+- In-app README viewer:
+- `Read Me` link (bottom-left)
 
 ## Requirements
 
-- macOS 13+
-- Xcode 15+ (recommended)
+- macOS 13 or newer
 - Intercom API key/token with Help Center read access
-
-## Run in Xcode
-
-1. Open Xcode.
-2. `File -> Open...`
-3. Select `/Users/samuelhuang/Desktop/Scripts/HelpCenterBackupMacApp`.
-4. Choose the `HelpCenterBackupApp` scheme.
-5. Press Run.
 
 ## Usage
 
-1. Paste your Intercom API key.
-2. Choose an output folder.
-3. Choose file type: `JSON`, `MARKDOWN`, `HTML`, or `PDF`.
-4. Choose whether to include images.
-5. Click **Start Backup**.
+1. Open the app.
+2. In `Options`, enter your Intercom API key.
+3. Choose an output folder.
+4. Select file type and backup options.
+5. Click `Run Backup`.
 
-The app stores your last API key, output folder, file type, and image preference in local app preferences.
+## Output
 
-## Export options
+- Article files are written into nested category folders.
+- Metadata and logs are written to the selected output folder:
+- `.backup_metadata.json`
+- `.backup_history.log`
 
-- `JSON`: structured article payload with `bodyHTML`, `bodyText`, and downloaded image paths.
-- `MARKDOWN`: markdown file with article metadata, text body, and optional image links.
-- `HTML`: HTML file preserving body markup. If images are included, image URLs are rewritten to local downloaded files.
-- `PDF`: text-based PDF export for each article.
+## Build From Source
 
-When **Include Images** is on, images are downloaded into an adjacent `*_assets` folder per article.
+1. Open this project in Xcode.
+2. Select the `HelpCenterBackupApp` scheme.
+3. Run.
 
-## Notes
+## Package App + DMG
 
-- API base URL is `https://api.intercom.io`.
-- API version header is set to `2.14`.
-- Article backup metadata is written to: `<output folder>/.backup_metadata.json`.
+From the project root:
+
+```bash
+./scripts/package-macos.sh /path/to/icon.jpg /path/to/background.jpg
+```
+
+- First argument: app icon source image.
+- Second argument: DMG background image.
+- Version is controlled in `scripts/package-macos.sh` via `APP_VERSION`.
