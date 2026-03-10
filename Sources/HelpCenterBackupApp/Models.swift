@@ -5,6 +5,7 @@ enum ExportFormat: String, CaseIterable, Codable, Identifiable {
     case markdown
     case html
     case pdf
+    case txt
 
     var id: String { rawValue }
 
@@ -22,6 +23,8 @@ enum ExportFormat: String, CaseIterable, Codable, Identifiable {
             return "html"
         case .pdf:
             return "pdf"
+        case .txt:
+            return "txt"
         }
     }
 }

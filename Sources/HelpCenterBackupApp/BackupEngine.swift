@@ -13,105 +13,118 @@ struct BackupEngine {
     ) async throws -> BackupStats {
         let client = IntercomClient(token: token)
         let metadataURL = outputDirectory.appendingPathComponent(".backup_metadata.json")
+        let auditLogURL = outputDirectory.appendingPathComponent(".backup_history.log")
+        let runID = UUID().uuidString.prefix(8)
         var metadata = loadMetadata(from: metadataURL)
 
-        try ensureDirectoryExists(outputDirectory)
-        progress("Fetching help centers...")
-        let helpCenters = try await client.fetchHelpCenters()
+        func emit(_ line: String) {
+            progress(line)
+            appendAuditLog(line: line, runID: String(runID), to: auditLogURL)
+        }
 
-        progress("Fetching collections...")
-        let collections = try await client.fetchCollections()
-        let collectionByID = Dictionary(uniqueKeysWithValues: collections.map { ($0.id, $0) })
-
-        progress("Fetching sections...")
-        let sections: [SectionItem]
         do {
-            sections = try await client.fetchSections()
+            try ensureDirectoryExists(outputDirectory)
+            emit("Starting backup run")
+            emit("Fetching help centers...")
+            let helpCenters = try await client.fetchHelpCenters()
+
+            emit("Fetching collections...")
+            let collections = try await client.fetchCollections()
+            let collectionByID = Dictionary(uniqueKeysWithValues: collections.map { ($0.id, $0) })
+
+            emit("Fetching sections...")
+            let sections: [SectionItem]
+            do {
+                sections = try await client.fetchSections()
+            } catch {
+                emit("Sections unavailable, continuing without section mapping: \(error.localizedDescription)")
+                sections = []
+            }
+            let sectionByID = Dictionary(uniqueKeysWithValues: sections.map { ($0.id, $0) })
+
+            emit("Fetching articles...")
+            let articles = try await client.fetchArticles()
+            emit("Found \(articles.count) articles")
+            emit("Export format: \(exportFormat.displayName), include images: \(includeImages ? "yes" : "no")")
+            emit("Download mode: \(downloadMode == .fullDownload ? "full download" : "updates only")")
+
+            var stats = BackupStats(total: articles.count, created: 0, modified: 0, unchanged: 0)
+
+            for (index, article) in articles.enumerated() {
+                let pathParts = pathHierarchy(
+                    article: article,
+                    collections: collectionByID,
+                    sections: sectionByID,
+                    helpCenters: helpCenters
+                )
+
+                let destinationDirectory = pathParts.reduce(outputDirectory) { partial, part in
+                    partial.appendingPathComponent(part)
+                }
+
+                try ensureDirectoryExists(destinationDirectory)
+
+                let articleID = article.id
+                let latestUpdatedAt = article.updatedAt ?? 0
+                let previous = metadata.articles[articleID]
+                let baseFileName = sanitizeFileComponent(article.title ?? "Untitled")
+                let outputFile = destinationDirectory.appendingPathComponent("\(baseFileName).\(exportFormat.fileExtension)")
+
+                let isMatchingExportOptions = previous?.exportFormat == exportFormat.rawValue && previous?.includeImages == includeImages
+                if downloadMode == .updatesOnly,
+                   let previous,
+                   previous.updatedAt >= latestUpdatedAt,
+                   isMatchingExportOptions,
+                   FileManager.default.fileExists(atPath: previous.filePath),
+                   outputFile.path == previous.filePath {
+                    stats.unchanged += 1
+                    emit("[\(index + 1)/\(articles.count)] Unchanged: \(article.title ?? articleID)")
+                    continue
+                }
+
+                let originalHTML = article.body ?? ""
+                let imageAssets = includeImages
+                    ? await downloadImages(from: originalHTML, in: destinationDirectory, assetDirectoryName: "\(baseFileName)_assets", progress: emit)
+                    : []
+
+                let renderedBodyHTML = includeImages
+                    ? rewriteImageSources(in: originalHTML, with: imageAssets)
+                    : removeImageTags(in: originalHTML)
+
+                try writeArticle(
+                    article: article,
+                    outputFile: outputFile,
+                    exportFormat: exportFormat,
+                    renderedBodyHTML: renderedBodyHTML,
+                    downloadedImages: imageAssets
+                )
+
+                if previous == nil {
+                    stats.created += 1
+                } else {
+                    stats.modified += 1
+                }
+
+                metadata.articles[articleID] = BackupRecord(
+                    updatedAt: latestUpdatedAt,
+                    filePath: outputFile.path,
+                    exportFormat: exportFormat.rawValue,
+                    includeImages: includeImages
+                )
+
+                emit("[\(index + 1)/\(articles.count)] Saved: \(article.title ?? articleID)")
+            }
+
+            metadata.lastRunISO8601 = ISO8601DateFormatter().string(from: Date())
+            let encodedMetadata = try JSONEncoder().encode(metadata)
+            try encodedMetadata.write(to: metadataURL)
+
+            emit("Backup finished. New: \(stats.created), Modified: \(stats.modified), Unchanged: \(stats.unchanged)")
+            return stats
         } catch {
-            progress("Sections unavailable, continuing without section mapping: \(error.localizedDescription)")
-            sections = []
+            emit("Backup failed: \(error.localizedDescription)")
+            throw error
         }
-        let sectionByID = Dictionary(uniqueKeysWithValues: sections.map { ($0.id, $0) })
-
-        progress("Fetching articles...")
-        let articles = try await client.fetchArticles()
-        progress("Found \(articles.count) articles")
-        progress("Export format: \(exportFormat.displayName), include images: \(includeImages ? "yes" : "no")")
-        progress("Download mode: \(downloadMode == .fullDownload ? "full download" : "updates only")")
-
-        var stats = BackupStats(total: articles.count, created: 0, modified: 0, unchanged: 0)
-
-        for (index, article) in articles.enumerated() {
-            let pathParts = pathHierarchy(
-                article: article,
-                collections: collectionByID,
-                sections: sectionByID,
-                helpCenters: helpCenters
-            )
-
-            let destinationDirectory = pathParts.reduce(outputDirectory) { partial, part in
-                partial.appendingPathComponent(part)
-            }
-
-            try ensureDirectoryExists(destinationDirectory)
-
-            let articleID = article.id
-            let latestUpdatedAt = article.updatedAt ?? 0
-            let previous = metadata.articles[articleID]
-            let baseFileName = sanitizeFileComponent(article.title ?? "Untitled")
-            let outputFile = destinationDirectory.appendingPathComponent("\(baseFileName).\(exportFormat.fileExtension)")
-
-            let isMatchingExportOptions = previous?.exportFormat == exportFormat.rawValue && previous?.includeImages == includeImages
-            if downloadMode == .updatesOnly,
-               let previous,
-               previous.updatedAt >= latestUpdatedAt,
-               isMatchingExportOptions,
-               FileManager.default.fileExists(atPath: previous.filePath),
-               outputFile.path == previous.filePath {
-                stats.unchanged += 1
-                progress("[\(index + 1)/\(articles.count)] Unchanged: \(article.title ?? articleID)")
-                continue
-            }
-
-            let originalHTML = article.body ?? ""
-            let imageAssets = includeImages
-                ? await downloadImages(from: originalHTML, in: destinationDirectory, assetDirectoryName: "\(baseFileName)_assets", progress: progress)
-                : []
-
-            let renderedBodyHTML = includeImages
-                ? rewriteImageSources(in: originalHTML, with: imageAssets)
-                : removeImageTags(in: originalHTML)
-
-            try writeArticle(
-                article: article,
-                outputFile: outputFile,
-                exportFormat: exportFormat,
-                renderedBodyHTML: renderedBodyHTML,
-                downloadedImages: imageAssets
-            )
-
-            if previous == nil {
-                stats.created += 1
-            } else {
-                stats.modified += 1
-            }
-
-            metadata.articles[articleID] = BackupRecord(
-                updatedAt: latestUpdatedAt,
-                filePath: outputFile.path,
-                exportFormat: exportFormat.rawValue,
-                includeImages: includeImages
-            )
-
-            progress("[\(index + 1)/\(articles.count)] Saved: \(article.title ?? articleID)")
-        }
-
-        metadata.lastRunISO8601 = ISO8601DateFormatter().string(from: Date())
-        let encodedMetadata = try JSONEncoder().encode(metadata)
-        try encodedMetadata.write(to: metadataURL)
-
-        progress("Backup finished. New: \(stats.created), Modified: \(stats.modified), Unchanged: \(stats.unchanged)")
-        return stats
     }
 
     private static func writeArticle(
@@ -151,6 +164,10 @@ struct BackupEngine {
         case .pdf:
             let text = formatArticleText(article: article, bodyText: htmlToText(renderedBodyHTML), images: downloadedImages)
             try writePDF(text: text, to: outputFile)
+
+        case .txt:
+            let text = formatArticleText(article: article, bodyText: htmlToText(renderedBodyHTML), images: downloadedImages)
+            try text.write(to: outputFile, atomically: true, encoding: .utf8)
         }
     }
 
@@ -164,6 +181,25 @@ struct BackupEngine {
 
     private static func ensureDirectoryExists(_ url: URL) throws {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+
+    private static func appendAuditLog(line: String, runID: String, to url: URL) {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let formatted = "[\(stamp)] [run:\(runID)] \(line)\n"
+        let data = Data(formatted.utf8)
+
+        if FileManager.default.fileExists(atPath: url.path) {
+            guard let fileHandle = try? FileHandle(forWritingTo: url) else { return }
+            do {
+                try fileHandle.seekToEnd()
+                try fileHandle.write(contentsOf: data)
+                try fileHandle.close()
+            } catch {
+                try? fileHandle.close()
+            }
+        } else {
+            try? data.write(to: url)
+        }
     }
 
     private static func pathHierarchy(

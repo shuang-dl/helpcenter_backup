@@ -3,8 +3,6 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var viewModel = BackupViewModel()
-    @State private var isExportSettingsExpanded = true
-    @State private var isAPIOutputExpanded = true
 
     @AppStorage("helpCenterBackup.token") private var accessToken = ""
     @AppStorage("helpCenterBackup.outputPath") private var outputPath = ""
@@ -71,61 +69,9 @@ struct ContentView: View {
                 }
             }
 
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.white.opacity(0.75))
-                Text("Options")
-                    .foregroundStyle(.white.opacity(0.8))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color.white.opacity(0.10))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
             VStack(spacing: 8) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isExportSettingsExpanded.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 10) {
-                        SidebarOptionRow(title: "Export Settings", systemImage: "slider.horizontal.3", isActive: isExportSettingsExpanded)
-                        Image(systemName: isExportSettingsExpanded ? "chevron.up" : "chevron.down")
-                            .foregroundStyle(.white.opacity(0.72))
-                            .padding(.trailing, 10)
-                    }
-                    .background(Color.clear)
-                }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
-
-                if isExportSettingsExpanded {
-                    exportSettingsPanel
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isAPIOutputExpanded.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 10) {
-                        SidebarOptionRow(title: "API & Output", systemImage: "link.badge.plus", isActive: isAPIOutputExpanded)
-                        Image(systemName: isAPIOutputExpanded ? "chevron.up" : "chevron.down")
-                            .foregroundStyle(.white.opacity(0.72))
-                            .padding(.trailing, 10)
-                    }
-                    .background(Color.clear)
-                }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
-
-                if isAPIOutputExpanded {
-                    apiOutputPanel
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-
-                SidebarOptionRow(title: "Logs", systemImage: "terminal", isActive: false)
+                SidebarOptionRow(title: "Options", systemImage: "slider.horizontal.3", isActive: true)
+                optionsPanel
 
                 Button {
                     startBackup()
@@ -148,8 +94,22 @@ struct ContentView: View {
         .foregroundStyle(.white)
     }
 
-    private var exportSettingsPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private var optionsPanel: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            Text("Intercom API Key")
+                .foregroundStyle(.white.opacity(0.85))
+                .font(.system(size: 12, weight: .medium))
+
+            SecureField("Enter token", text: $accessToken)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(Color.black.opacity(0.25))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                )
+
             Text("Output Folder")
                 .foregroundStyle(.white.opacity(0.85))
                 .font(.system(size: 12, weight: .medium))
@@ -198,31 +158,6 @@ struct ContentView: View {
                     .toggleStyle(.checkbox)
                     .pointingHandCursor()
             }
-        }
-        .padding(12)
-        .background(Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
-    }
-
-    private var apiOutputPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Intercom API Key")
-                .foregroundStyle(.white.opacity(0.85))
-                .font(.system(size: 12, weight: .medium))
-
-            SecureField("Enter token", text: $accessToken)
-                .textFieldStyle(.plain)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(Color.black.opacity(0.25))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                )
         }
         .padding(12)
         .background(Color.white.opacity(0.06))
